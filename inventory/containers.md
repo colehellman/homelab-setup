@@ -1,6 +1,6 @@
 # LXC Container Inventory
 
-Last synced from Proxmox: 2026-03-02
+Last synced from Proxmox: 2026-03-02 (audit pass)
 
 All containers are currently **running**.
 
@@ -95,15 +95,17 @@ All containers are currently **running**.
 
 - `tailscaled` — running as an advertised exit node
 
-**Tailscale peers (from this node):**
+**Tailscale peers (from this node — live as of 2026-03-02):**
 
 | Node | IP | OS | Status |
 |------|----|----|--------|
-| tailscale-exit | 100.90.65.3 | Linux | active |
+| tailscale-exit | 100.90.65.3 | Linux | active — idle, **offers exit node** |
 | coles-mac-mini | 100.127.93.22 | macOS | online |
-| cole-phone | 100.106.119.69 | iOS | offline |
-| macbook-air | 100.68.41.123 | macOS | offline |
-| game-pc | 100.69.227.27 | Windows | offline |
+| cole-phone | 100.106.119.69 | iOS | offline (last seen 1d ago) |
+| macbook-air | 100.68.41.123 | macOS | offline (last seen 5d ago) |
+| game-pc | 100.69.227.27 | Windows | offline (last seen 255d ago) |
+
+> **Note:** Remote backup server `100.107.13.28` is not currently visible in this tailnet's peer list — verify it is joined and approved in the Tailscale admin console.
 
 ---
 
