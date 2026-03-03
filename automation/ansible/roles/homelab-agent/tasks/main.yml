@@ -1,0 +1,120 @@
+---
+- name: Install system dependencies
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - git
+      - curl
+      - sqlite3
+    state: present
+    update_cache: true
+
+- name: Create homelab-agent service user
+  user:
+    name: homelab-agent
+    system: true
+    shell: /sbin/nologin
+    home: /opt/homelab-agent
+    create_home: true
+
+- name: Create state directory
+  file:
+    path: /var/lib/homelab-agent
+    state: directory
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0700"
+
+- name: Create secrets directory
+  file:
+    path: /etc/homelab-agent
+    state: directory
+    owner: root
+    group: homelab-agent
+    mode: "0750"
+
+- name: Deploy secrets file
+  template:
+    src: agent.env.j2
+    dest: /etc/homelab-agent/agent.env
+    owner: root
+    group: homelab-agent
+    mode: "0640"
+
+- name: Set git identity for homelab-agent user
+  # Required so 'git commit' succeeds when the agent updates docs.
+  community.general.git_config:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    scope: global
+  become: true
+  become_user: homelab-agent
+  loop:
+    - {name: user.name, value: homelab-agent}
+    - {name: user.email, value: homelab-agent@localhost}
+
+- name: Clone homelab-setup repo
+  git:
+    repo: "https://github.com/{{ agent_secrets.GITHUB_REPO }}.git"
+    dest: /opt/homelab-setup
+    version: main
+    force: false
+  become_user: homelab-agent
+
+- name: Copy agent source files
+  copy:
+    src: "{{ playbook_dir }}/../../agent/"
+    dest: /opt/homelab-agent/
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0644"
+
+- name: Make agent.py and webhook_server.py executable
+  file:
+    path: "/opt/homelab-agent/{{ item }}"
+    mode: "0755"
+  loop:
+    - agent.py
+    - webhook_server.py
+
+- name: Create Python virtualenv and install dependencies
+  pip:
+    requirements: /opt/homelab-agent/requirements.txt
+    virtualenv: /opt/homelab-agent/venv
+    virtualenv_command: python3 -m venv
+  become_user: homelab-agent
+
+- name: Deploy systemd unit files
+  copy:
+    src: "{{ playbook_dir }}/../../systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - homelab-agent-webhook.service
+    - homelab-agent@.service
+    - homelab-agent-weekly.timer
+    - homelab-agent-monthly.timer
+  notify: Reload systemd
+
+- name: Enable and start webhook service
+  systemd:
+    name: homelab-agent-webhook.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable timers
+  systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - homelab-agent-weekly.timer
+    - homelab-agent-monthly.timer
+
+handlers:
+  - name: Reload systemd
+    systemd:
+      daemon_reload: true
