@@ -82,15 +82,23 @@ See [`inventory/containers.md`](inventory/containers.md) for full specs and serv
 
 ## Health Status
 
-_Last checked: 2026-03-02 19:04 CST (outside maintenance window)_
+_Last checked: 2026-03-03 CST_
 
 | Check | Result |
 |-------|--------|
 | Tailscale mesh | healthy — 7 peers online |
 | Mobile (cole-phone) | offline — last seen 2026-03-01 |
 | game-pc Tailscale key | ⚠️ expired 2025-09-07 — needs renewal |
-| CPU (app-core) | ~0.1% avg over 1h |
-| CPU (hellflix) | ~0.45% avg over 1h |
-| CPU (monitoring) | ~0.41% avg over 1h |
+| **Proxmox host disk** | **⚠️ 81.5% full — WARNING threshold exceeded** |
+| hellflix (LXC 210) disk | 65.9% |
+| monitoring (LXC 102) disk | 43.4% |
+| app-core (LXC 100) disk | 35.9% |
+| CPU (app-core) | ~62% (investigate) |
+| CPU (hellflix) | ~8.5% |
+| CPU (monitoring) | ~7.2% |
+| CPU (proxmox-host) | ~7.3% |
 | truenas-offsite | online + active over Tailscale |
 | Exit node (tailscale-exit) | online |
+| Watchtower (LXC 101, 102) | running — auto-update daily 03:00 |
+| Grafana alerts | 5 rules active → Discord-SRE |
+| Uptime Kuma | 19 monitors → Discord #homelab-alerts |
