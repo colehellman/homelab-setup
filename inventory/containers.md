@@ -1,6 +1,6 @@
 # LXC Container Inventory
 
-Last synced from Proxmox: 2026-03-02 (audit pass)
+Last synced from Proxmox: 2026-03-03
 
 All containers are currently **running**.
 
@@ -93,19 +93,57 @@ All containers are currently **running**.
 
 **Services:**
 
-- `tailscaled` — running as an advertised exit node
+- `tailscaled` — running as an advertised exit node, `tag:server` + `tag:exit-node`
 
-**Tailscale peers (from this node — live as of 2026-03-02):**
+**Notes:**
+- IPv6 forwarding enabled 2026-03-03 (`net.ipv6.conf.all.forwarding=1` in `/etc/sysctl.d/99-tailscale.conf`) — required for exit node relay
+- Tailscale ACL applied 2026-03-03 — tag-based policy, see `tailscale/acl.hujson`
+
+**Tailscale peers (from this node — live as of 2026-03-03):**
 
 | Node | IP | OS | Status |
 |------|----|----|--------|
-| tailscale-exit | 100.90.65.3 | Linux | active — idle, **offers exit node** |
+| tailscale-exit | 100.90.65.3 | Linux | active — **offers exit node** |
+| truenas-main | 100.102.196.76 | Linux | active — **offers exit node** (fallback) |
 | coles-mac-mini | 100.127.93.22 | macOS | online |
-| cole-phone | 100.106.119.69 | iOS | offline (last seen 1d ago) |
-| macbook-air | 100.68.41.123 | macOS | offline (last seen 5d ago) |
-| game-pc | 100.69.227.27 | Windows | offline (last seen 255d ago) |
+| cole-phone | 100.106.119.69 | iOS | offline (last seen 2026-03-01) |
+| macbook-air | 100.68.41.123 | macOS | offline (last seen 2026-02-25) |
+| game-pc-1 | 100.96.94.77 | Windows | online |
+| pihole240 | 100.118.22.112 | Linux | online |
+| pihole241 | 100.101.158.118 | Linux | online |
+| truenas-offsite | 100.107.13.28 | Linux | online |
+| zer02w | 100.119.144.52 | Linux | online |
 
-> **Note:** Remote backup server `100.107.13.28` is not currently visible in this tailnet's peer list — verify it is joined and approved in the Tailscale admin console.
+---
+
+## 200 — pbs
+
+| Field | Value |
+|-------|-------|
+| Hostname | pbs |
+| IP | 192.168.1.200 |
+| OS | Debian 12 (bookworm) |
+| vCPUs | 2 |
+| RAM | 4096 MB |
+| Disk | 32 GB (OS + PBS metadata + chunk cache) |
+| GPU passthrough | No |
+
+**Services:**
+
+- `proxmox-backup-server` v3.4.8 — web UI at https://192.168.1.200:8007
+- `proxmox-backup-proxy` — TLS proxy (fingerprint: `32:af:ad:7b:6a:09:0d:02:12:20:d7:d7:5d:62:70:c3:ef:c8:ed:48:49:c5:7b:5a:bc:01:7c:51:ad:a6:1c:ff`)
+
+**Storage:**
+- NFS mount: `192.168.1.250:/mnt/homeboy/proxmox-backups` → `/mnt/pbs-store` (persisted in `/etc/fstab`)
+- TrueNAS dataset: `homeboy/proxmox-backups` — 500 GB quota, `acltype=off`, NFS share with `maproot_user=root`
+- Datastore name: `homeboy-backups`
+
+**Backup job `nightly-all`:** daily — VMs 100,101,102,190,210 — retention: 7 daily / 4 weekly / 3 monthly — mode: snapshot, compression: zstd
+
+**Setup notes:**
+- Container must be **privileged** (`unprivileged: 0`) for NFS mounting to work
+- After initial install, ownership of `/etc/proxmox-backup` and `/var/lib/proxmox-backup` must be fixed if container was ever run unprivileged (uid shift from 100000+X → X)
+- `mount.nfs` setuid ownership must be `root:root` — verify with `ls -la /sbin/mount.nfs`
 
 ---
 
@@ -121,6 +159,7 @@ All containers are currently **running**.
 | Disk | 94 GB |
 | GPU passthrough | **Yes** — `/dev/dri/card0` + `/dev/dri/renderD128` |
 | NVIDIA driver | 535.261.03 |
+| Journal cap | 200 MB / 2 weeks (`/etc/systemd/journald.conf.d/size.conf`) |
 
 **Services (Docker):**
 
@@ -139,3 +178,9 @@ All containers are currently **running**.
 | cadvisor | gcr.io/cadvisor/cadvisor:latest | 8080 |
 | node-exporter | prom/node-exporter:latest | — |
 | dockge-dockge-1 | louislam/dockge (local build) | 5001 |
+
+**Compose notes (2026-03-03):**
+- Stacks in `/opt/stacks/` — media, arrr, metrics, nicotine, automation
+- Secrets (`RD_TOKEN`) in `/opt/stacks/media/.env` — not in compose files
+- rclone VFS cache at `/srv/media/cache/rclone`, cap 50 GB (`--cache-dir`)
+- zurg `check_for_changes_every_secs: 60`
