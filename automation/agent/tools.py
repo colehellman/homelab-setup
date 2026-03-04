@@ -45,7 +45,7 @@ _GITHUB_HEADERS = {
 
 def proxmox_list_containers() -> list[dict]:
     r = requests.get(
-        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/lxc",
+        f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc",
         headers=_PROXMOX_HEADERS, verify=False, timeout=10
     )
     r.raise_for_status()
@@ -54,7 +54,7 @@ def proxmox_list_containers() -> list[dict]:
 
 def proxmox_container_status(vmid: int) -> dict:
     r = requests.get(
-        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/lxc/{vmid}/status/current",
+        f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc/{vmid}/status/current",
         headers=_PROXMOX_HEADERS, verify=False, timeout=10
     )
     r.raise_for_status()
@@ -324,7 +324,7 @@ def proxmox_container_power(vmid: int, action: str) -> dict:
     if action not in valid:
         return {"error": f"Invalid action '{action}'. Must be one of: {valid}"}
     r = requests.post(
-        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/lxc/{vmid}/status/{action}",
+        f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc/{vmid}/status/{action}",
         headers=_PROXMOX_HEADERS, verify=False, timeout=30,
     )
     r.raise_for_status()
@@ -337,7 +337,7 @@ def proxmox_vm_power(vmid: int, action: str) -> dict:
     if action not in valid:
         return {"error": f"Invalid action '{action}'. Must be one of: {valid}"}
     r = requests.post(
-        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/qemu/{vmid}/status/{action}",
+        f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/qemu/{vmid}/status/{action}",
         headers=_PROXMOX_HEADERS, verify=False, timeout=30,
     )
     r.raise_for_status()
@@ -350,7 +350,7 @@ def proxmox_container_snapshot(vmid: int, name: str) -> dict:
     Requires VM.Snapshot on the Proxmox token.
     """
     r = requests.post(
-        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/lxc/{vmid}/snapshot",
+        f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc/{vmid}/snapshot",
         headers=_PROXMOX_HEADERS,
         json={"snapname": name, "description": "auto by homelab-agent"},
         verify=False, timeout=30,
@@ -362,7 +362,7 @@ def proxmox_container_snapshot(vmid: int, name: str) -> dict:
 def proxmox_list_vms() -> list[dict]:
     """List QEMU VMs on the Proxmox host."""
     r = requests.get(
-        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/qemu",
+        f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/qemu",
         headers=_PROXMOX_HEADERS, verify=False, timeout=10,
     )
     r.raise_for_status()
