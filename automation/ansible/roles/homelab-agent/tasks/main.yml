@@ -8,6 +8,7 @@
       - git
       - curl
       - sqlite3
+      - sudo
     state: present
     update_cache: true
 
@@ -55,6 +56,14 @@
     - {name: user.name, value: homelab-agent}
     - {name: user.email, value: homelab-agent@localhost}
 
+- name: Create homelab-setup repo directory
+  file:
+    path: /opt/homelab-setup
+    state: directory
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0755"
+
 - name: Clone homelab-setup repo
   git:
     repo: "https://github.com/{{ agent_secrets.GITHUB_REPO }}.git"
@@ -65,7 +74,7 @@
 
 - name: Copy agent source files
   copy:
-    src: "{{ playbook_dir }}/../../agent/"
+    src: "{{ playbook_dir }}/../agent/"
     dest: /opt/homelab-agent/
     owner: homelab-agent
     group: homelab-agent
@@ -88,7 +97,7 @@
 
 - name: Deploy systemd unit files
   copy:
-    src: "{{ playbook_dir }}/../../systemd/{{ item }}"
+    src: "{{ playbook_dir }}/../systemd/{{ item }}"
     dest: "/etc/systemd/system/{{ item }}"
     mode: "0644"
   loop:
@@ -114,7 +123,3 @@
     - homelab-agent-weekly.timer
     - homelab-agent-monthly.timer
 
-handlers:
-  - name: Reload systemd
-    systemd:
-      daemon_reload: true
