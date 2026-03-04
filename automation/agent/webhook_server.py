@@ -8,6 +8,7 @@ Runs as: homelab-agent-webhook.service (always-on)
 
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -27,10 +28,16 @@ AGENT_SCRIPT = Path(__file__).parent / "agent.py"
 # Dedup window: ignore repeated alerts within 60 minutes
 DEDUP_WINDOW_MINUTES = 60
 
+# Bearer token for /alert — set via WEBHOOK_TOKEN env var.
+# If unset, requests are accepted without auth (warn on startup).
+_WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN", "")
+
 
 @app.on_event("startup")
 async def startup() -> None:
     init_db()
+    if not _WEBHOOK_TOKEN:
+        log.warning("WEBHOOK_TOKEN is not set — /alert endpoint accepts unauthenticated requests")
 
 
 @app.post("/alert")
@@ -39,6 +46,11 @@ async def receive_alert(request: Request) -> JSONResponse:
     Receive a Grafana webhook alert and trigger an investigation.
     Grafana webhook payload: https://grafana.com/docs/grafana/latest/alerting/configure-notifications/manage-contact-points/integrations/webhook-notifier/
     """
+    if _WEBHOOK_TOKEN:
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {_WEBHOOK_TOKEN}":
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
     try:
         payload = await request.json()
     except Exception:

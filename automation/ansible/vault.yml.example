@@ -13,8 +13,10 @@ agent_secrets:
   GRAFANA_PROMETHEUS_DS_ID: "1"                   # Grafana → Connections → Data Sources → Prometheus → check ID in URL
   TAILSCALE_API_KEY: ""                            # Devices: read scope only
   DISCORD_WEBHOOK_URL: ""                          # #homelab-digest channel
-  GITHUB_TOKEN: ""                                 # Fine-grained: issues+contents on homelab-setup only
+  GITHUB_TOKEN: ""                                 # Fine-grained: issues:write + contents:read on homelab-setup only (reduce scope if not using issue filing)
   HOMELAB_REPO_PATH: "/opt/homelab-setup"
   GITHUB_REPO: "colehellman/homelab-setup"
   DISCORD_BOT_TOKEN: ""                           # Bot token from discord.com/developers
   DISCORD_CONTROL_CHANNEL_ID: ""                  # Channel ID for interactive commands (right-click channel → Copy ID)
+  WEBHOOK_TOKEN: ""                               # Secret for Grafana → /alert webhook auth (Bearer token); generate with: openssl rand -hex 32
+  SSL_VERIFY: "false"                             # Set to "true" + set REQUESTS_CA_BUNDLE=/path/ca.crt for self-signed cert validation

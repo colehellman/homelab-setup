@@ -17,6 +17,25 @@ from typing import Any
 
 # --- Config ---
 
+_REQUIRED_ENV_VARS = [
+    "PROXMOX_HOST",
+    "PROXMOX_TOKEN_ID",
+    "PROXMOX_TOKEN_SECRET",
+    "TRUENAS_LOCAL_URL",
+    "TRUENAS_LOCAL_API_KEY",
+    "GRAFANA_URL",
+    "GRAFANA_API_KEY",
+    "TAILSCALE_API_KEY",
+    "DISCORD_WEBHOOK_URL",
+    "GITHUB_TOKEN",
+]
+_missing = [v for v in _REQUIRED_ENV_VARS if not os.environ.get(v)]
+if _missing:
+    raise EnvironmentError(
+        f"Missing required environment variables: {', '.join(_missing)}. "
+        "Check /etc/homelab-agent/agent.env."
+    )
+
 PROXMOX_HOST = os.environ["PROXMOX_HOST"]
 PROXMOX_TOKEN_ID = os.environ["PROXMOX_TOKEN_ID"]
 PROXMOX_TOKEN_SECRET = os.environ["PROXMOX_TOKEN_SECRET"]
@@ -32,6 +51,13 @@ GITHUB_REPO = os.environ.get("GITHUB_REPO", "colehellman/homelab-setup")
 # Grafana datasource proxy ID for Prometheus. Find it at Grafana → Connections → Data Sources.
 GRAFANA_PROMETHEUS_DS_ID = int(os.environ.get("GRAFANA_PROMETHEUS_DS_ID", "1"))
 
+# SSL verification for internal HTTPS services (Proxmox, TrueNAS).
+# Set SSL_VERIFY=true and REQUESTS_CA_BUNDLE=/path/to/ca.crt to enable cert checking.
+# Defaults to False for self-signed certs common in homelabs.
+_SSL_VERIFY: bool | str = os.environ.get("REQUESTS_CA_BUNDLE") or (
+    os.environ.get("SSL_VERIFY", "false").lower() == "true"
+)
+
 _PROXMOX_HEADERS = {"Authorization": f"PVEAPIToken={PROXMOX_TOKEN_ID}={PROXMOX_TOKEN_SECRET}"}
 _GRAFANA_HEADERS = {"Authorization": f"Bearer {GRAFANA_API_KEY}", "Content-Type": "application/json"}
 _TRUENAS_HEADERS = {"Authorization": f"Bearer {TRUENAS_API_KEY}"}
@@ -46,7 +72,7 @@ _GITHUB_HEADERS = {
 def proxmox_list_containers() -> list[dict]:
     r = requests.get(
         f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc",
-        headers=_PROXMOX_HEADERS, verify=False, timeout=10
+        headers=_PROXMOX_HEADERS, verify=_SSL_VERIFY, timeout=10
     )
     r.raise_for_status()
     return r.json().get("data", [])
@@ -55,7 +81,7 @@ def proxmox_list_containers() -> list[dict]:
 def proxmox_container_status(vmid: int) -> dict:
     r = requests.get(
         f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc/{vmid}/status/current",
-        headers=_PROXMOX_HEADERS, verify=False, timeout=10
+        headers=_PROXMOX_HEADERS, verify=_SSL_VERIFY, timeout=10
     )
     r.raise_for_status()
     return r.json().get("data", {})
@@ -64,7 +90,7 @@ def proxmox_container_status(vmid: int) -> dict:
 def truenas_replication_jobs() -> list[dict]:
     r = requests.get(
         f"{TRUENAS_URL}/api/v2.0/replication",
-        headers=_TRUENAS_HEADERS, verify=False, timeout=15
+        headers=_TRUENAS_HEADERS, verify=_SSL_VERIFY, timeout=15
     )
     r.raise_for_status()
     jobs = r.json()
@@ -83,7 +109,7 @@ def truenas_replication_jobs() -> list[dict]:
 def truenas_snapshot_counts() -> list[dict]:
     r = requests.get(
         f"{TRUENAS_URL}/api/v2.0/zfs/snapshot?limit=0",
-        headers=_TRUENAS_HEADERS, verify=False, timeout=15
+        headers=_TRUENAS_HEADERS, verify=_SSL_VERIFY, timeout=15
     )
     r.raise_for_status()
     snaps = r.json()
@@ -325,7 +351,7 @@ def proxmox_container_power(vmid: int, action: str) -> dict:
         return {"error": f"Invalid action '{action}'. Must be one of: {valid}"}
     r = requests.post(
         f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc/{vmid}/status/{action}",
-        headers=_PROXMOX_HEADERS, verify=False, timeout=30,
+        headers=_PROXMOX_HEADERS, verify=_SSL_VERIFY, timeout=30,
     )
     r.raise_for_status()
     return {"status": "accepted", "vmid": vmid, "action": action, "task": r.json().get("data")}
@@ -338,7 +364,7 @@ def proxmox_vm_power(vmid: int, action: str) -> dict:
         return {"error": f"Invalid action '{action}'. Must be one of: {valid}"}
     r = requests.post(
         f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/qemu/{vmid}/status/{action}",
-        headers=_PROXMOX_HEADERS, verify=False, timeout=30,
+        headers=_PROXMOX_HEADERS, verify=_SSL_VERIFY, timeout=30,
     )
     r.raise_for_status()
     return {"status": "accepted", "vmid": vmid, "action": action, "task": r.json().get("data")}
@@ -353,7 +379,7 @@ def proxmox_container_snapshot(vmid: int, name: str) -> dict:
         f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/lxc/{vmid}/snapshot",
         headers=_PROXMOX_HEADERS,
         json={"snapname": name, "description": "auto by homelab-agent"},
-        verify=False, timeout=30,
+        verify=_SSL_VERIFY, timeout=30,
     )
     r.raise_for_status()
     return {"status": "accepted", "vmid": vmid, "snapshot": name, "task": r.json().get("data")}
@@ -363,7 +389,7 @@ def proxmox_list_vms() -> list[dict]:
     """List QEMU VMs on the Proxmox host."""
     r = requests.get(
         f"https://{PROXMOX_HOST}/api2/json/nodes/proxmox/qemu",
-        headers=_PROXMOX_HEADERS, verify=False, timeout=10,
+        headers=_PROXMOX_HEADERS, verify=_SSL_VERIFY, timeout=10,
     )
     r.raise_for_status()
     return r.json().get("data", [])
@@ -379,7 +405,7 @@ def docker_containers(vmid: int | None = None) -> list[dict]:
 
     def _ssh(cmd: str) -> str:
         r = subprocess.run(
-            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+            ["ssh", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes",
              "-o", "ConnectTimeout=10", f"root@{proxmox_ip}", cmd],
             capture_output=True, text=True, timeout=30,
         )
@@ -419,7 +445,7 @@ def truenas_pool_scrub(pool_name: str) -> dict:
         f"{TRUENAS_URL}/api/v2.0/pool/id/{pool_name}/scrub",
         headers=_TRUENAS_HEADERS,
         json={"action": "START"},
-        verify=False, timeout=15,
+        verify=_SSL_VERIFY, timeout=15,
     )
     r.raise_for_status()
     return {"status": "scrub started", "pool": pool_name}
@@ -429,7 +455,7 @@ def check_url(url: str, timeout_s: int = 10) -> dict:
     """HTTP GET a URL and return status code, response time, and reachability."""
     try:
         start = time.time()
-        r = requests.get(url, timeout=timeout_s, allow_redirects=True, verify=False)
+        r = requests.get(url, timeout=timeout_s, allow_redirects=True, verify=_SSL_VERIFY)
         elapsed_ms = int((time.time() - start) * 1000)
         return {
             "url": url,
@@ -445,22 +471,39 @@ def check_url(url: str, timeout_s: int = 10) -> dict:
 
 def ssh_run(host: str, command: str) -> dict:
     """
-    Run a shell command on a whitelisted host via SSH.
+    Run a read-only shell command on a whitelisted host via SSH.
     The homelab-agent SSH key (~/.ssh/id_ed25519) must be in authorized_keys on the target.
-    Blocked commands: rm -rf, mkfs, fdisk, wipefs, dd if=
+    Only commands with an explicitly allowed prefix are permitted (whitelist approach).
     """
     if host not in _SSH_ALLOWED_HOSTS:
         return {"error": f"Host {host!r} not in allowed list: {sorted(_SSH_ALLOWED_HOSTS)}"}
 
-    # Rudimentary safety — block obviously destructive patterns
-    _blocked = ["rm -rf", "mkfs", "fdisk", "wipefs", "dd if=", "> /dev/"]
-    lower_cmd = command.lower()
-    for pat in _blocked:
-        if pat in lower_cmd:
-            return {"error": f"Blocked: command contains '{pat}'"}
+    # Whitelist of safe read-only command prefixes.
+    # Deny everything not on this list — prevents destructive operations even if
+    # the LLM is manipulated into constructing a harmful command.
+    _ALLOWED_PREFIXES = (
+        "docker ps", "docker inspect", "docker logs", "docker stats",
+        "journalctl",
+        "systemctl status", "systemctl list-units",
+        "ps ", "ps\t",
+        "df ", "df\t", "df\n",
+        "free ",
+        "uptime",
+        "cat /proc/",
+        "cat /sys/",
+        "ip addr", "ip link", "ip route",
+        "zpool status", "zpool list",
+        "zfs list",
+        "smartctl -a",
+        "pct list", "pct status",
+        "qm list", "qm status",
+    )
+    stripped = command.strip()
+    if not any(stripped.startswith(p) for p in _ALLOWED_PREFIXES):
+        return {"error": f"Command not in allowed list. Permitted prefixes: {_ALLOWED_PREFIXES}"}
 
     result = subprocess.run(
-        ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+        ["ssh", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes",
          "-o", "ConnectTimeout=10", f"root@{host}", command],
         capture_output=True, text=True, timeout=60,
     )

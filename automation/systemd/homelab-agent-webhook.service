@@ -18,6 +18,12 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/homelab-agent /opt/homelab-setup
+ProtectHome=read-only
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+SystemCallFilter=@system-service
 
 [Install]
 WantedBy=multi-user.target

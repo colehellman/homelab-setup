@@ -104,6 +104,21 @@
     group: homelab-agent
     mode: "0700"
 
+- name: Pre-populate known_hosts for trusted SSH targets
+  # Avoids StrictHostKeyChecking prompts and prevents MITM on first connect.
+  # Hosts: Proxmox (192.168.1.69) and TrueNAS (192.168.1.250).
+  known_hosts:
+    path: /opt/homelab-agent/.ssh/known_hosts
+    name: "{{ item }}"
+    key: "{{ lookup('pipe', 'ssh-keyscan -T 5 ' + item + ' 2>/dev/null') }}"
+    state: present
+  loop:
+    - "192.168.1.69"
+    - "192.168.1.250"
+  become: true
+  become_user: homelab-agent
+  ignore_errors: true  # Non-fatal if host unreachable at deploy time
+
 - name: Generate SSH key for homelab-agent (used by discord bot ssh_run tool)
   # The public key printed below must be added to authorized_keys on target hosts
   # (Proxmox: /root/.ssh/authorized_keys, TrueNAS: via UI or API)
