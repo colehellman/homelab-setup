@@ -369,6 +369,50 @@ def proxmox_list_vms() -> list[dict]:
     return r.json().get("data", [])
 
 
+def docker_containers(vmid: int | None = None) -> list[dict]:
+    """
+    Get Docker container status for one or all running LXC containers.
+    Uses 'pct exec <vmid> -- docker ps' via SSH to the Proxmox host.
+    No direct SSH to LXCs required.
+    """
+    proxmox_ip = PROXMOX_HOST.split(":")[0]  # strip port if present
+
+    def _ssh(cmd: str) -> str:
+        r = subprocess.run(
+            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+             "-o", "ConnectTimeout=10", f"root@{proxmox_ip}", cmd],
+            capture_output=True, text=True, timeout=30,
+        )
+        return r.stdout
+
+    # Determine which VMIDs to query
+    if vmid is not None:
+        vmids = [vmid]
+    else:
+        containers = proxmox_list_containers()
+        vmids = [int(c["vmid"]) for c in containers if c.get("status") == "running"]
+
+    results = []
+    for vid in vmids:
+        raw = _ssh(
+            f"pct exec {vid} -- docker ps --format "
+            "'{{.ID}}\\t{{.Image}}\\t{{.Status}}\\t{{.Names}}' 2>/dev/null"
+        )
+        containers_out = []
+        for line in raw.strip().splitlines():
+            parts = line.split("\t")
+            if len(parts) == 4:
+                containers_out.append({
+                    "id": parts[0],
+                    "image": parts[1],
+                    "status": parts[2],
+                    "name": parts[3],
+                })
+        results.append({"vmid": vid, "containers": containers_out})
+
+    return results
+
+
 def truenas_pool_scrub(pool_name: str) -> dict:
     """Start a ZFS scrub on a TrueNAS pool."""
     r = requests.post(
@@ -489,6 +533,24 @@ WRITE_TOOL_SCHEMAS = [
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "docker_containers",
+        "description": (
+            "List Docker containers running inside LXC containers on Proxmox. "
+            "Pass vmid to query a single container, or omit to query all running LXCs. "
+            "Uses pct exec via Proxmox SSH — no direct LXC SSH required."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vmid": {
+                    "type": "integer",
+                    "description": "LXC VMID to query. Omit to query all running LXCs.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "truenas_pool_scrub",
         "description": "Start a ZFS scrub on a TrueNAS pool to check for data errors.",
         "input_schema": {
@@ -567,6 +629,7 @@ def execute_tool(name: str, inputs: dict) -> Any:
         "proxmox_vm_power": lambda i: proxmox_vm_power(i["vmid"], i["action"]),
         "proxmox_container_snapshot": lambda i: proxmox_container_snapshot(i["vmid"], i["name"]),
         "proxmox_list_vms": lambda i: proxmox_list_vms(),
+        "docker_containers": lambda i: docker_containers(i.get("vmid")),
         "truenas_pool_scrub": lambda i: truenas_pool_scrub(i["pool_name"]),
         "check_url": lambda i: check_url(i["url"], i.get("timeout_s", 10)),
         "ssh_run": lambda i: ssh_run(i["host"], i["command"]),
