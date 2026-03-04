@@ -80,13 +80,14 @@
     group: homelab-agent
     mode: "0644"
 
-- name: Make agent.py and webhook_server.py executable
+- name: Make Python entry points executable
   file:
     path: "/opt/homelab-agent/{{ item }}"
     mode: "0755"
   loop:
     - agent.py
     - webhook_server.py
+    - discord_bot.py
 
 - name: Create Python virtualenv and install dependencies
   pip:
@@ -94,6 +95,21 @@
     virtualenv: /opt/homelab-agent/venv
     virtualenv_command: python3 -m venv
   become_user: homelab-agent
+
+- name: Generate SSH key for homelab-agent (used by discord bot ssh_run tool)
+  # The public key printed below must be added to authorized_keys on target hosts
+  # (Proxmox: /root/.ssh/authorized_keys, TrueNAS: via UI or API)
+  community.crypto.openssh_keypair:
+    path: /opt/homelab-agent/.ssh/id_ed25519
+    owner: homelab-agent
+    group: homelab-agent
+    type: ed25519
+  become_user: homelab-agent
+  register: agent_ssh_keypair
+
+- name: Print agent SSH public key
+  debug:
+    msg: "homelab-agent public key (add to Proxmox /root/.ssh/authorized_keys): {{ agent_ssh_keypair.public_key }}"
 
 - name: Deploy systemd unit files
   copy:
@@ -105,14 +121,18 @@
     - homelab-agent@.service
     - homelab-agent-weekly.timer
     - homelab-agent-monthly.timer
+    - homelab-agent-discord.service
   notify: Reload systemd
 
-- name: Enable and start webhook service
+- name: Enable and start always-on services
   systemd:
-    name: homelab-agent-webhook.service
+    name: "{{ item }}"
     enabled: true
     state: started
     daemon_reload: true
+  loop:
+    - homelab-agent-webhook.service
+    - homelab-agent-discord.service
 
 - name: Enable timers
   systemd:

@@ -13,27 +13,13 @@ import json
 import os
 import sys
 import traceback
-from pathlib import Path
 
 import anthropic
 
 from db import init_db, log_run, recent_runs
-from tools import TOOL_SCHEMAS, execute_tool
+from tools import TOOL_SCHEMAS, execute_tool, load_context
 
 MODEL = "claude-sonnet-4-6"
-HOMELAB_REPO_PATH = os.environ.get("HOMELAB_REPO_PATH", "/opt/homelab-setup")
-
-
-# --- Context loading ---
-
-def load_context() -> str:
-    """Load README + containers.md from the repo to give the agent current homelab state."""
-    parts = []
-    for rel in ["README.md", "inventory/containers.md"]:
-        path = Path(HOMELAB_REPO_PATH) / rel
-        if path.exists():
-            parts.append(f"### {rel}\n\n{path.read_text()}")
-    return "\n\n---\n\n".join(parts) if parts else "(docs not found)"
 
 
 # --- System prompt ---

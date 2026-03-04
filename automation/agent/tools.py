@@ -1,13 +1,18 @@
 """
 Tool implementations and Claude tool schemas for the homelab agent.
-All API calls are read-only. Write tools are scoped to Discord, GitHub, and the docs repo.
+
+TOOL_SCHEMAS       — read-only tools used by scheduled runs (weekly/monthly/investigate)
+WRITE_TOOL_SCHEMAS — additional write tools available only to the Discord bot
+ALL_TOOL_SCHEMAS   — union of both, used by the interactive bot
 """
 
 import os
 import json
 import requests
 import subprocess
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 # --- Config ---
@@ -301,9 +306,252 @@ TOOL_SCHEMAS = [
 ]
 
 
+# --- Write tool implementations (interactive / Discord bot only) ---
+
+# SSH is allowed only to these hosts. homelab-agent's key must be in authorized_keys.
+_SSH_ALLOWED_HOSTS = {
+    "192.168.1.69",   # Proxmox host
+    "192.168.1.250",  # TrueNAS
+}
+
+
+def proxmox_container_power(vmid: int, action: str) -> dict:
+    """
+    action: start | stop | reboot | shutdown
+    Requires HomelabAgentRW role on the Proxmox token (VM.PowerMgmt).
+    """
+    valid = {"start", "stop", "reboot", "shutdown"}
+    if action not in valid:
+        return {"error": f"Invalid action '{action}'. Must be one of: {valid}"}
+    r = requests.post(
+        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/lxc/{vmid}/status/{action}",
+        headers=_PROXMOX_HEADERS, verify=False, timeout=30,
+    )
+    r.raise_for_status()
+    return {"status": "accepted", "vmid": vmid, "action": action, "task": r.json().get("data")}
+
+
+def proxmox_vm_power(vmid: int, action: str) -> dict:
+    """Same as proxmox_container_power but for QEMU VMs."""
+    valid = {"start", "stop", "reboot", "shutdown"}
+    if action not in valid:
+        return {"error": f"Invalid action '{action}'. Must be one of: {valid}"}
+    r = requests.post(
+        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/qemu/{vmid}/status/{action}",
+        headers=_PROXMOX_HEADERS, verify=False, timeout=30,
+    )
+    r.raise_for_status()
+    return {"status": "accepted", "vmid": vmid, "action": action, "task": r.json().get("data")}
+
+
+def proxmox_container_snapshot(vmid: int, name: str) -> dict:
+    """
+    Create a snapshot of an LXC container.
+    Requires VM.Snapshot on the Proxmox token.
+    """
+    r = requests.post(
+        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/lxc/{vmid}/snapshot",
+        headers=_PROXMOX_HEADERS,
+        json={"snapname": name, "description": "auto by homelab-agent"},
+        verify=False, timeout=30,
+    )
+    r.raise_for_status()
+    return {"status": "accepted", "vmid": vmid, "snapshot": name, "task": r.json().get("data")}
+
+
+def proxmox_list_vms() -> list[dict]:
+    """List QEMU VMs on the Proxmox host."""
+    r = requests.get(
+        f"https://{PROXMOX_HOST}/api2/json/nodes/pve/qemu",
+        headers=_PROXMOX_HEADERS, verify=False, timeout=10,
+    )
+    r.raise_for_status()
+    return r.json().get("data", [])
+
+
+def truenas_pool_scrub(pool_name: str) -> dict:
+    """Start a ZFS scrub on a TrueNAS pool."""
+    r = requests.post(
+        f"{TRUENAS_URL}/api/v2.0/pool/id/{pool_name}/scrub",
+        headers=_TRUENAS_HEADERS,
+        json={"action": "START"},
+        verify=False, timeout=15,
+    )
+    r.raise_for_status()
+    return {"status": "scrub started", "pool": pool_name}
+
+
+def check_url(url: str, timeout_s: int = 10) -> dict:
+    """HTTP GET a URL and return status code, response time, and reachability."""
+    try:
+        start = time.time()
+        r = requests.get(url, timeout=timeout_s, allow_redirects=True, verify=False)
+        elapsed_ms = int((time.time() - start) * 1000)
+        return {
+            "url": url,
+            "status_code": r.status_code,
+            "ok": r.ok,
+            "response_ms": elapsed_ms,
+        }
+    except requests.exceptions.Timeout:
+        return {"url": url, "ok": False, "error": "timeout"}
+    except requests.exceptions.ConnectionError as exc:
+        return {"url": url, "ok": False, "error": str(exc)}
+
+
+def ssh_run(host: str, command: str) -> dict:
+    """
+    Run a shell command on a whitelisted host via SSH.
+    The homelab-agent SSH key (~/.ssh/id_ed25519) must be in authorized_keys on the target.
+    Blocked commands: rm -rf, mkfs, fdisk, wipefs, dd if=
+    """
+    if host not in _SSH_ALLOWED_HOSTS:
+        return {"error": f"Host {host!r} not in allowed list: {sorted(_SSH_ALLOWED_HOSTS)}"}
+
+    # Rudimentary safety — block obviously destructive patterns
+    _blocked = ["rm -rf", "mkfs", "fdisk", "wipefs", "dd if=", "> /dev/"]
+    lower_cmd = command.lower()
+    for pat in _blocked:
+        if pat in lower_cmd:
+            return {"error": f"Blocked: command contains '{pat}'"}
+
+    result = subprocess.run(
+        ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+         "-o", "ConnectTimeout=10", f"root@{host}", command],
+        capture_output=True, text=True, timeout=60,
+    )
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout[-4000:],
+        "stderr": result.stderr[-1000:],
+    }
+
+
+# --- Write tool schemas ---
+
+WRITE_TOOL_SCHEMAS = [
+    {
+        "name": "proxmox_container_power",
+        "description": (
+            "Start, stop, reboot, or shutdown an LXC container. "
+            "ALWAYS confirm with the user before stop or shutdown. "
+            "Snapshot first if the container has been running > 24h."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vmid": {"type": "integer", "description": "LXC container VMID"},
+                "action": {
+                    "type": "string",
+                    "enum": ["start", "stop", "reboot", "shutdown"],
+                    "description": "Power action to perform",
+                },
+            },
+            "required": ["vmid", "action"],
+        },
+    },
+    {
+        "name": "proxmox_vm_power",
+        "description": (
+            "Start, stop, reboot, or shutdown a QEMU VM. "
+            "ALWAYS confirm with the user before stop or shutdown."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vmid": {"type": "integer", "description": "QEMU VM VMID"},
+                "action": {
+                    "type": "string",
+                    "enum": ["start", "stop", "reboot", "shutdown"],
+                },
+            },
+            "required": ["vmid", "action"],
+        },
+    },
+    {
+        "name": "proxmox_container_snapshot",
+        "description": "Create a snapshot of an LXC container. Use before risky operations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vmid": {"type": "integer"},
+                "name": {
+                    "type": "string",
+                    "description": "Snapshot name (alphanumeric, dashes OK, no spaces). E.g. 'pre-update-2026-03-04'",
+                },
+            },
+            "required": ["vmid", "name"],
+        },
+    },
+    {
+        "name": "proxmox_list_vms",
+        "description": "List QEMU VMs on the Proxmox host.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "truenas_pool_scrub",
+        "description": "Start a ZFS scrub on a TrueNAS pool to check for data errors.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pool_name": {"type": "string", "description": "TrueNAS pool name (e.g. 'data', 'tank')"},
+            },
+            "required": ["pool_name"],
+        },
+    },
+    {
+        "name": "check_url",
+        "description": (
+            "HTTP GET a URL and return status code, response time, and reachability. "
+            "Use to check if a service is up from the homelab's perspective."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Full URL to check (e.g. 'http://192.168.1.100:8096/health')"},
+                "timeout_s": {"type": "integer", "description": "Timeout in seconds (default 10)", "default": 10},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "ssh_run",
+        "description": (
+            "Run a shell command on a whitelisted host (192.168.1.69 = Proxmox, "
+            "192.168.1.250 = TrueNAS) via SSH. "
+            "Use for docker commands, journalctl, systemctl status, etc. "
+            "Blocked: rm -rf, mkfs, fdisk, wipefs, dd if=."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "host": {"type": "string", "description": "Target host IP"},
+                "command": {"type": "string", "description": "Shell command to run"},
+            },
+            "required": ["host", "command"],
+        },
+    },
+]
+
+ALL_TOOL_SCHEMAS = TOOL_SCHEMAS + WRITE_TOOL_SCHEMAS
+
+
+# --- Context loader (shared with discord_bot) ---
+
+def load_context() -> str:
+    """Load README + containers.md from the homelab repo."""
+    parts = []
+    for rel in ["README.md", "inventory/containers.md"]:
+        path = Path(HOMELAB_REPO_PATH) / rel
+        if path.exists():
+            parts.append(f"### {rel}\n\n{path.read_text()}")
+    return "\n\n---\n\n".join(parts) if parts else "(docs not found)"
+
+
 def execute_tool(name: str, inputs: dict) -> Any:
     """Dispatch a tool call to its implementation."""
     dispatch = {
+        # Read tools
         "proxmox_list_containers": lambda i: proxmox_list_containers(),
         "proxmox_container_status": lambda i: proxmox_container_status(i["vmid"]),
         "truenas_replication_jobs": lambda i: truenas_replication_jobs(),
@@ -314,6 +562,14 @@ def execute_tool(name: str, inputs: dict) -> Any:
         "discord_send": lambda i: discord_send(i["level"], i["title"], i["body"], i.get("fields")),
         "github_create_issue": lambda i: github_create_issue(i["title"], i["body"], i.get("labels")),
         "git_commit_docs": lambda i: git_commit_docs(i["files"], i["message"]),
+        # Write tools
+        "proxmox_container_power": lambda i: proxmox_container_power(i["vmid"], i["action"]),
+        "proxmox_vm_power": lambda i: proxmox_vm_power(i["vmid"], i["action"]),
+        "proxmox_container_snapshot": lambda i: proxmox_container_snapshot(i["vmid"], i["name"]),
+        "proxmox_list_vms": lambda i: proxmox_list_vms(),
+        "truenas_pool_scrub": lambda i: truenas_pool_scrub(i["pool_name"]),
+        "check_url": lambda i: check_url(i["url"], i.get("timeout_s", 10)),
+        "ssh_run": lambda i: ssh_run(i["host"], i["command"]),
     }
     fn = dispatch.get(name)
     if fn is None:
