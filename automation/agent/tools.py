@@ -97,8 +97,8 @@ def truenas_snapshot_counts() -> list[dict]:
 def grafana_query(expr: str, range_minutes: int = 60) -> list[dict]:
     params = {
         "query": expr,
-        "start": f"now-{range_minutes}m",
-        "end": "now",
+        "start": int(time.time()) - range_minutes * 60,
+        "end": int(time.time()),
         "step": "60",
     }
     r = requests.get(
