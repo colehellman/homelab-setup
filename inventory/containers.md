@@ -134,7 +134,7 @@ All containers are currently **running**.
 **Services:**
 
 - `proxmox-backup-server` v3.4.8 — web UI at https://192.168.1.200:8007
-- `proxmox-backup-proxy` — TLS proxy (fingerprint: `32:af:ad:7b:6a:09:0d:02:12:20:d7:d7:5d:62:70:c3:ef:c8:ed:48:49:c5:7b:5a:bc:01:7c:51:ad:a6:1c:ff`)
+- `proxmox-backup-proxy` — TLS proxy (fingerprint: verify via PBS web UI → Dashboard)
 
 **Storage:**
 - NFS mount: `192.168.1.250:/mnt/homeboy/proxmox-backups` → `/mnt/pbs-store` (persisted in `/etc/fstab`)
