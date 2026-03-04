@@ -1,0 +1,153 @@
+---
+- name: Install system dependencies
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - git
+      - curl
+      - sqlite3
+      - sudo
+    state: present
+    update_cache: true
+
+- name: Create homelab-agent service user
+  user:
+    name: homelab-agent
+    system: true
+    shell: /sbin/nologin
+    home: /opt/homelab-agent
+    create_home: true
+
+- name: Create state directory
+  file:
+    path: /var/lib/homelab-agent
+    state: directory
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0700"
+
+- name: Create secrets directory
+  file:
+    path: /etc/homelab-agent
+    state: directory
+    owner: root
+    group: homelab-agent
+    mode: "0750"
+
+- name: Deploy secrets file
+  template:
+    src: agent.env.j2
+    dest: /etc/homelab-agent/agent.env
+    owner: root
+    group: homelab-agent
+    mode: "0640"
+
+- name: Set git identity for homelab-agent user
+  # Required so 'git commit' succeeds when the agent updates docs.
+  community.general.git_config:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    scope: global
+  become: true
+  become_user: homelab-agent
+  loop:
+    - {name: user.name, value: homelab-agent}
+    - {name: user.email, value: homelab-agent@localhost}
+
+- name: Create homelab-setup repo directory
+  file:
+    path: /opt/homelab-setup
+    state: directory
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0755"
+
+- name: Clone homelab-setup repo
+  git:
+    repo: "https://github.com/{{ agent_secrets.GITHUB_REPO }}.git"
+    dest: /opt/homelab-setup
+    version: main
+    force: false
+  become_user: homelab-agent
+
+- name: Copy agent source files
+  copy:
+    src: "{{ playbook_dir }}/../agent/"
+    dest: /opt/homelab-agent/
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0644"
+
+- name: Make Python entry points executable
+  file:
+    path: "/opt/homelab-agent/{{ item }}"
+    mode: "0755"
+  loop:
+    - agent.py
+    - webhook_server.py
+    - discord_bot.py
+
+- name: Create Python virtualenv and install dependencies
+  pip:
+    requirements: /opt/homelab-agent/requirements.txt
+    virtualenv: /opt/homelab-agent/venv
+    virtualenv_command: python3 -m venv
+  become_user: homelab-agent
+
+- name: Create .ssh directory for homelab-agent
+  file:
+    path: /opt/homelab-agent/.ssh
+    state: directory
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0700"
+
+- name: Generate SSH key for homelab-agent (used by discord bot ssh_run tool)
+  # The public key printed below must be added to authorized_keys on target hosts
+  # (Proxmox: /root/.ssh/authorized_keys, TrueNAS: via UI or API)
+  community.crypto.openssh_keypair:
+    path: /opt/homelab-agent/.ssh/id_ed25519
+    owner: homelab-agent
+    group: homelab-agent
+    type: ed25519
+  become_user: homelab-agent
+  register: agent_ssh_keypair
+
+- name: Print agent SSH public key
+  debug:
+    msg: "homelab-agent public key (add to Proxmox /root/.ssh/authorized_keys): {{ agent_ssh_keypair.public_key }}"
+
+- name: Deploy systemd unit files
+  copy:
+    src: "{{ playbook_dir }}/../systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - homelab-agent-webhook.service
+    - homelab-agent@.service
+    - homelab-agent-weekly.timer
+    - homelab-agent-monthly.timer
+    - homelab-agent-discord.service
+  notify: Reload systemd
+
+- name: Enable and start always-on services
+  systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - homelab-agent-webhook.service
+    - homelab-agent-discord.service
+
+- name: Enable timers
+  systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - homelab-agent-weekly.timer
+    - homelab-agent-monthly.timer
+

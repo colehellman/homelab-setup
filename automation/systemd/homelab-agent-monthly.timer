@@ -1,0 +1,11 @@
+[Unit]
+Description=Homelab Agent Monthly Suggestions
+Requires=homelab-agent@monthly.service
+
+[Timer]
+OnCalendar=*-*-01 05:00:00
+Persistent=true
+Unit=homelab-agent@monthly.service
+
+[Install]
+WantedBy=timers.target

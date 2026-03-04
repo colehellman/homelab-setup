@@ -1,0 +1,11 @@
+[Unit]
+Description=Homelab Agent Weekly Digest
+Requires=homelab-agent@weekly.service
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+Unit=homelab-agent@weekly.service
+
+[Install]
+WantedBy=timers.target

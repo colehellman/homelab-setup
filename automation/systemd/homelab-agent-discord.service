@@ -1,0 +1,28 @@
+[Unit]
+Description=Homelab Agent Discord Bot
+After=network-online.target
+Wants=network-online.target
+# Start after webhook so both share the same venv install window
+After=homelab-agent-webhook.service
+
+[Service]
+Type=simple
+User=homelab-agent
+Group=homelab-agent
+WorkingDirectory=/opt/homelab-agent
+EnvironmentFile=/etc/homelab-agent/agent.env
+ExecStart=/opt/homelab-agent/venv/bin/python discord_bot.py
+
+Restart=on-failure
+RestartSec=15
+# Discord gateway reconnects handle transient drops; only restart on actual crashes
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/homelab-agent /opt/homelab-setup
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
