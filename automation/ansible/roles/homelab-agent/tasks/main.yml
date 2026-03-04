@@ -96,6 +96,14 @@
     virtualenv_command: python3 -m venv
   become_user: homelab-agent
 
+- name: Create .ssh directory for homelab-agent
+  file:
+    path: /opt/homelab-agent/.ssh
+    state: directory
+    owner: homelab-agent
+    group: homelab-agent
+    mode: "0700"
+
 - name: Generate SSH key for homelab-agent (used by discord bot ssh_run tool)
   # The public key printed below must be added to authorized_keys on target hosts
   # (Proxmox: /root/.ssh/authorized_keys, TrueNAS: via UI or API)
