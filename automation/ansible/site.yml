@@ -1,0 +1,18 @@
+---
+# Provision the homelab-agent LXC (VMID 220, Debian 12)
+# Usage: ansible-playbook site.yml -i inventory.yml --ask-vault-pass
+#
+# Prerequisites:
+#   1. Create LXC 220 in Proxmox (Debian 12, 1 vCPU, 1GB RAM, 8GB disk)
+#   2. Set the agent IP in inventory.yml
+#   3. Create vault.yml with actual credentials: ansible-vault create vault.yml
+#   4. Ensure SSH access from this machine to the LXC
+
+- name: Provision homelab-agent
+  hosts: homelab_agent
+  become: true
+  vars_files:
+    - vault.yml
+
+  roles:
+    - homelab-agent

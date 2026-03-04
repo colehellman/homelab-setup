@@ -102,3 +102,11 @@ _Last checked: 2026-03-04 CST_
 | PBS (LXC 200) | online — first backup job running 2026-03-03 |
 | Mobile (cole-phone) | offline — last seen 2026-03-01 |
 | truenas-offsite | online + active over Tailscale |
+| Exit node (tailscale-exit) | online |
+| Watchtower (LXC 101, 102) | running — auto-update daily 03:00 |
+| Grafana alerts | 5 rules active → Discord-SRE |
+| Uptime Kuma | 19 monitors → Discord #homelab-alerts |
+| **Proxmox host disk** | **⚠️ 81.5% full — WARNING threshold exceeded** |
+| hellflix (LXC 210) disk | 65.9% |
+| monitoring (LXC 102) disk | 43.4% |
+| app-core (LXC 100) disk | 35.9% |

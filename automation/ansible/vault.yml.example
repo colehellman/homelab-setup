@@ -1,0 +1,20 @@
+# Copy this to vault.yml and encrypt it: ansible-vault encrypt vault.yml
+# Never commit vault.yml in plaintext.
+
+agent_secrets:
+  ANTHROPIC_API_KEY: ""
+  PROXMOX_HOST: "192.168.1.x"
+  PROXMOX_TOKEN_ID: "homelab-agent@pam!agent"     # HomelabAgentRW role for bot write ops (see README)
+  PROXMOX_TOKEN_SECRET: ""
+  TRUENAS_LOCAL_API_KEY: ""                        # Readonly group
+  TRUENAS_LOCAL_URL: "http://192.168.1.250"
+  GRAFANA_URL: "http://192.168.1.177:3000"
+  GRAFANA_API_KEY: ""                              # Viewer service account
+  GRAFANA_PROMETHEUS_DS_ID: "1"                   # Grafana → Connections → Data Sources → Prometheus → check ID in URL
+  TAILSCALE_API_KEY: ""                            # Devices: read scope only
+  DISCORD_WEBHOOK_URL: ""                          # #homelab-digest channel
+  GITHUB_TOKEN: ""                                 # Fine-grained: issues+contents on homelab-setup only
+  HOMELAB_REPO_PATH: "/opt/homelab-setup"
+  GITHUB_REPO: "colehellman/homelab-setup"
+  DISCORD_BOT_TOKEN: ""                           # Bot token from discord.com/developers
+  DISCORD_CONTROL_CHANNEL_ID: ""                  # Channel ID for interactive commands (right-click channel → Copy ID)

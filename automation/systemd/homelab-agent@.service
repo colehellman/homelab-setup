@@ -1,0 +1,23 @@
+[Unit]
+Description=Homelab Agent (%i run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=homelab-agent
+Group=homelab-agent
+WorkingDirectory=/opt/homelab-agent
+ExecStart=/opt/homelab-agent/venv/bin/python agent.py --mode %i
+EnvironmentFile=/etc/homelab-agent/agent.env
+
+# Log to journal with identifier
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homelab-agent-%i
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/homelab-agent /opt/homelab-setup

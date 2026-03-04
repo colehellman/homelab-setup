@@ -1,6 +1,6 @@
 # LXC Container Inventory
 
-Last synced from Proxmox: 2026-03-03
+Last synced from Proxmox: 2026-03-03 (audit pass)
 
 All containers are currently **running**.
 
@@ -23,6 +23,7 @@ All containers are currently **running**.
 | Container | Image | Ports |
 |-----------|-------|-------|
 | dockge-dockge-1 | louislam/dockge:1 | 5001 |
+| open-webui | ghcr.io/open-webui/open-webui:main | 3000 |
 | immich_server | ghcr.io/immich-app/immich-server:release | 2283 |
 | immich_postgres | ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0 | 5432 (internal) |
 | immich_redis | valkey/valkey:8-bookworm | 6379 (internal) |
@@ -51,6 +52,7 @@ All containers are currently **running**.
 | npm-core | jc21/nginx-proxy-manager:latest | 80, 81, 443 |
 | npm-db | jc21/mariadb-aria:latest | 3306 (internal) |
 | crowdsec | crowdsecurity/crowdsec:latest | 8080 |
+| watchtower | containrrr/watchtower:latest | — |
 
 ---
 
@@ -75,6 +77,7 @@ All containers are currently **running**.
 | uptime-kuma | louislam/uptime-kuma:2 | 3001 |
 | cadvisor | gcr.io/cadvisor/cadvisor:latest | 8080 |
 | node-exporter | prom/node-exporter:latest | — |
+| watchtower | containrrr/watchtower:latest | — |
 
 ---
 

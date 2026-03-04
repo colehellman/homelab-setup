@@ -1,0 +1,23 @@
+[Unit]
+Description=Homelab Agent Webhook Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=homelab-agent
+Group=homelab-agent
+WorkingDirectory=/opt/homelab-agent
+ExecStart=/opt/homelab-agent/venv/bin/python webhook_server.py
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=/etc/homelab-agent/agent.env
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/homelab-agent /opt/homelab-setup
+
+[Install]
+WantedBy=multi-user.target
